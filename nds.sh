@@ -363,7 +363,15 @@ disable_auto_switch() {
 nds_init() {
     local bashrc="$HOME/.bashrc"
     local zshrc="$HOME/.zshrc"
-    local nds_path_line='if [ -d "$HOME/.config/nds/default/bin" ]; then export PATH="$HOME/.config/nds/default/bin:$PATH"; fi'
+    local nds_path_block='
+# NDS Node.js default version (respects AUTO_SWITCH)
+if [ -f "$HOME/.config/nds/nds.conf" ]; then
+  . "$HOME/.config/nds/nds.conf"
+fi
+if [ "$AUTO_SWITCH" != "true" ] && [ -d "$HOME/.config/nds/default/bin" ]; then
+  export PATH="$HOME/.config/nds/default/bin:$PATH"
+fi
+'
     local nds_func='
 nds() {
   if [ "$1" = "use" ] && [ -n "$2" ]; then
@@ -389,7 +397,13 @@ nds() {
     echo "Default Node.js version set to $version."
     echo
     echo "Add this to your .bashrc or .zshrc to use it automatically in new shells:"
-    echo '\''if [ -d "$HOME/.config/nds/default/bin" ]; then export PATH="$HOME/.config/nds/default/bin:$PATH"; fi'\''
+    echo '\''# NDS Node.js default version (respects AUTO_SWITCH)
+if [ -f "$HOME/.config/nds/nds.conf" ]; then
+  . "$HOME/.config/nds/nds.conf"
+fi
+if [ "$AUTO_SWITCH" != "true" ] && [ -d "$HOME/.config/nds/default/bin" ]; then
+  export PATH="$HOME/.config/nds/default/bin:$PATH"
+fi'\''
   else
     command nds "$@"
   fi
@@ -401,12 +415,16 @@ nds() {
     add_to_shell_config() {
         local shellrc="$1"
         if [[ -f "$shellrc" ]]; then
-            # Remove old nds() definitions in a portable way
+            # Remove old nds() definitions
             sed '/^nds()/,/^}/d' "$shellrc" > "$shellrc.tmp" && mv "$shellrc.tmp" "$shellrc"
-            # Add PATH line if missing
-            if ! grep -Fxq "$nds_path_line" "$shellrc"; then
-                echo "$nds_path_line" >> "$shellrc"
-                echo "Added nds PATH initialization to $shellrc"
+            # Remove old unconditional PATH lines
+            sed '/^if \[ -d "\$HOME\/.config\/nds\/default\/bin" \]; then export PATH="\$HOME\/.config\/nds\/default\/bin:\$PATH"; fi$/d' "$shellrc" > "$shellrc.tmp" && mv "$shellrc.tmp" "$shellrc"
+            # Remove previous NDS PATH block
+            sed '/# NDS Node.js default version (respects AUTO_SWITCH)/,/^fi$/d' "$shellrc" > "$shellrc.tmp" && mv "$shellrc.tmp" "$shellrc"
+            # Add conditional PATH block if missing
+            if ! grep -q 'NDS Node.js default version (respects AUTO_SWITCH)' "$shellrc" 2>/dev/null; then
+                echo "$nds_path_block" >> "$shellrc"
+                echo "Added nds conditional PATH initialization to $shellrc"
                 updated=1
             fi
             # Add function if missing
