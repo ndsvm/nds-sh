@@ -30,12 +30,19 @@ clean_path_of_node_bins() {
     local path_in="$1"
     local out_path=""
     local IFS=':'
-    for p in $path_in; do
-        skip=""
+    local node_bins=()
+    # Only build node_bins if any exist
+    if compgen -G "$VERSIONS_DIR"/*/bin > /dev/null; then
         for d in "$VERSIONS_DIR"/*/bin; do
-            [[ "$p" == "$d" ]] && skip=1 && break
+            node_bins+=("$d")
         done
-        [[ -z "$skip" ]] && out_path="${out_path:+$out_path:}$p"
+    fi
+    for p in $path_in; do
+        local found=0
+        for d in "${node_bins[@]}"; do
+            [[ "$p" == "$d" ]] && found=1 && break
+        done
+        [[ $found -eq 0 ]] && out_path="${out_path:+$out_path:}$p"
     done
     echo "$out_path"
 }
