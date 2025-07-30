@@ -211,45 +211,26 @@ remove_version() {
 use_version() {
     local input="$1"
     local version=""
-
-    # List all installed versions, sort them in ascending order
-    local candidates
-    candidates=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$input" || true)
-
-    # Pick the last (latest) version from matches
-    version=$(echo "$candidates" | tail -n 1)
-
+    # Find highest matching installed version
+    version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$input" | tail -n 1)
     if [[ -z "$version" ]]; then
         echo "No installed Node.js version matching '$input'."
         return 1
     fi
-
-    local bin_path="$VERSIONS_DIR/$version/bin"
-    if [[ ! -d "$bin_path" ]]; then
-        echo "Node.js version $version is missing a bin directory!"
-        return 1
-    fi
-
-    export PATH="$bin_path:$PATH"
-    echo "Now using Node.js $version in this shell."
+    # Only print the bin path, do NOT export PATH in the script
+    echo "$VERSIONS_DIR/$version/bin"
 }
 
 set_default_version() {
     local input="$1"
     local version=""
-
-    local candidates
-    candidates=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$input" || true)
-    version=$(echo "$candidates" | tail -n 1)
-
+    version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$input" | tail -n 1)
     if [[ -z "$version" ]]; then
         echo "No installed Node.js version matching '$input'."
         return 1
     fi
-
     ln -sfn "$VERSIONS_DIR/$version" "$DEFAULT_NODE_SYMLINK"
-    local bin_path="$VERSIONS_DIR/$version/bin"
-    export PATH="$bin_path:$PATH"
+    echo "$VERSIONS_DIR/$version/bin"
     echo "Default Node.js version set to $version."
     echo
     echo "Add this to your .bashrc or .zshrc to use it automatically in new shells:"
@@ -379,28 +360,54 @@ nds_init() {
     local bashrc="$HOME/.bashrc"
     local zshrc="$HOME/.zshrc"
     local nds_path_line='if [ -d "$HOME/.config/nds/default/bin" ]; then export PATH="$HOME/.config/nds/default/bin:$PATH"; fi'
-    local func_line='
+    local nds_func='
 nds() {
   if [ "$1" = "use" ] && [ -n "$2" ]; then
-    export PATH="$HOME/.config/nds/versions/$2/bin:$(echo $PATH | tr ":" "\n" | grep -v "$HOME/.config/nds/versions/.*/bin" | paste -sd ":")"
-    echo "Now using Node.js $2 in this shell."
+    local VERSIONS_DIR="$HOME/.config/nds/versions"
+    local version
+    version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$2" | tail -n 1)
+    if [ -z "$version" ]; then
+      echo "No installed Node.js version matching '\''$2'\''."
+      return 1
+    fi
+    export PATH="$VERSIONS_DIR/$version/bin:$PATH"
+    echo "Now using Node.js $version in this shell."
+  elif [ "$1" = "set" ] && [ -n "$2" ]; then
+    local VERSIONS_DIR="$HOME/.config/nds/versions"
+    local version
+    version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$2" | tail -n 1)
+    if [ -z "$version" ]; then
+      echo "No installed Node.js version matching '\''$2'\''."
+      return 1
+    fi
+    ln -sfn "$VERSIONS_DIR/$version" "$HOME/.config/nds/default"
+    export PATH="$VERSIONS_DIR/$version/bin:$PATH"
+    echo "Default Node.js version set to $version."
+    echo
+    echo "Add this to your .bashrc or .zshrc to use it automatically in new shells:"
+    echo '\''if [ -d "$HOME/.config/nds/default/bin" ]; then export PATH="$HOME/.config/nds/default/bin:$PATH"; fi'\''
   else
     command nds "$@"
   fi
 }
 '
+
     local updated=0
 
     add_to_shell_config() {
         local shellrc="$1"
         if [[ -f "$shellrc" ]]; then
+            # Remove old nds() definitions
+            sed -i '/^nds()/,/^}/d' "$shellrc"
+            # Add PATH line if missing
             if ! grep -Fxq "$nds_path_line" "$shellrc"; then
                 echo "$nds_path_line" >> "$shellrc"
                 echo "Added nds PATH initialization to $shellrc"
                 updated=1
             fi
+            # Add function if missing
             if ! grep -q "nds() {" "$shellrc" 2>/dev/null; then
-                echo "$func_line" >> "$shellrc"
+                echo "$nds_func" >> "$shellrc"
                 echo "Added nds shell function to $shellrc"
                 updated=1
             fi
