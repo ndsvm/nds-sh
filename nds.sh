@@ -100,13 +100,16 @@ interactive_remove_installed_versions() {
     fi
 
     echo "You selected:"
-    echo "$picked"
-    echo "Are you sure you want to remove these version(s)? [y/N]"
+    for version in $picked; do
+        echo "  - $version"
+    done
+    echo
+    echo "Are you sure you want to remove ALL of the above version(s)? [y/N]"
     read -r confirm
     if [[ "$confirm" == "y" ]]; then
-        while IFS= read -r version; do
+        for version in $picked; do
             remove_version "$version"
-        done <<< "$picked"
+        done
     else
         echo "Aborted."
     fi
