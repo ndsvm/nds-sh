@@ -256,12 +256,10 @@ interactive_version_picker() {
 # -------- Auto-Switching Logic --------
 
 auto_switch_to_project_version() {
-    # Check config first
     if [[ -f "$CONFIG_FILE" ]]; then
         source "$CONFIG_FILE"
         [[ "$AUTO_SWITCH" != "true" ]] && return
     fi
-    # Find .nds or .nvmrc in current directory
     local version_file=""
     if [[ -f ".nds" ]]; then
         version_file=".nds"
@@ -274,15 +272,21 @@ auto_switch_to_project_version() {
         if [[ -n "$version" ]]; then
             local current_version
             current_version=$(node --version 2>/dev/null | sed 's/^v//')
-            if [[ "$current_version" != "$version" ]]; then
-                if [[ ! -d "$VERSIONS_DIR/$version" ]]; then
+            if [[ -z "$current_version" || ! "$current_version" == "$version"* ]]; then
+                local installed_version
+                installed_version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$version" | tail -n 1)
+                if [[ -z "$installed_version" ]]; then
                     echo "[nds] Installing Node.js $version from $version_file"
                     install_version "$version"
+                    installed_version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$version" | tail -n 1)
                 fi
-                # Switch version for current shell
-                local bin_path="$VERSIONS_DIR/$version/bin"
-                export PATH="$bin_path:$(echo $PATH | tr ':' '\n' | grep -v "$VERSIONS_DIR/.*/bin" | paste -sd ':')"
-                echo "[nds] Now using Node.js $version (from $version_file)"
+                if [[ -n "$installed_version" && -d "$VERSIONS_DIR/$installed_version/bin" ]]; then
+                    local bin_path="$VERSIONS_DIR/$installed_version/bin"
+                    export PATH="$bin_path:$(echo $PATH | tr ':' '\n' | grep -v "$VERSIONS_DIR/.*/bin" | paste -sd ':' -)"
+                    echo "[nds] Now using Node.js $installed_version (from $version_file)"
+                else
+                    echo "[nds] Could not find an installed Node.js version matching $version (from $version_file)"
+                fi
             fi
         fi
     fi
