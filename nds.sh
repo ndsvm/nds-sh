@@ -210,35 +210,43 @@ remove_version() {
 
 use_version() {
     local input="$1"
-    if [[ -z "$input" || "$input" == "latest" ]]; then
-        version=$(ls -v "$VERSIONS_DIR" | tail -n 1)
-    else
-        version=$(ls -v "$VERSIONS_DIR" | grep "^$input" | tail -n 1)
-    fi
+    local version=""
+
+    # List all installed versions, sort them in ascending order
+    local candidates
+    candidates=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$input" || true)
+
+    # Pick the last (latest) version from matches
+    version=$(echo "$candidates" | tail -n 1)
+
     if [[ -z "$version" ]]; then
         echo "No installed Node.js version matching '$input'."
         return 1
     fi
+
     local bin_path="$VERSIONS_DIR/$version/bin"
     if [[ ! -d "$bin_path" ]]; then
         echo "Node.js version $version is missing a bin directory!"
         return 1
     fi
+
     export PATH="$bin_path:$PATH"
     echo "Now using Node.js $version in this shell."
 }
 
 set_default_version() {
     local input="$1"
-    if [[ -z "$input" || "$input" == "latest" ]]; then
-        version=$(ls -v "$VERSIONS_DIR" | tail -n 1)
-    else
-        version=$(ls -v "$VERSIONS_DIR" | grep "^$input" | tail -n 1)
-    fi
+    local version=""
+
+    local candidates
+    candidates=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$input" || true)
+    version=$(echo "$candidates" | tail -n 1)
+
     if [[ -z "$version" ]]; then
         echo "No installed Node.js version matching '$input'."
         return 1
     fi
+
     ln -sfn "$VERSIONS_DIR/$version" "$DEFAULT_NODE_SYMLINK"
     local bin_path="$VERSIONS_DIR/$version/bin"
     export PATH="$bin_path:$PATH"
