@@ -316,19 +316,19 @@ add-zsh-hook precmd auto_switch_to_project_version
 # <<< nds precmd auto-switch end <<<
 '
 
-    # Write function and hook to bashrc
+    # Bashrc edits (portable)
     if [[ -f "$bashrc" ]]; then
-        sed -i '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$bashrc"
-        sed -i '/# >>> nds PROMPT_COMMAND auto-switch start >>>/,/# <<< nds PROMPT_COMMAND auto-switch end <<</d' "$bashrc"
+        sed '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$bashrc" > "$bashrc.tmp" && mv "$bashrc.tmp" "$bashrc"
+        sed '/# >>> nds PROMPT_COMMAND auto-switch start >>>/,/# <<< nds PROMPT_COMMAND auto-switch end <<</d' "$bashrc" > "$bashrc.tmp" && mv "$bashrc.tmp" "$bashrc"
         echo "$func_code" >> "$bashrc"
         echo "$bash_hook_code" >> "$bashrc"
         echo "Enabled nds auto-switching in $bashrc"
     fi
 
-    # Write function and hook to zshrc
+    # Zshrc edits (portable)
     if [[ -f "$zshrc" ]]; then
-        sed -i '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$zshrc"
-        sed -i '/# >>> nds precmd auto-switch start >>>/,/# <<< nds precmd auto-switch end <<</d' "$zshrc"
+        sed '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$zshrc" > "$zshrc.tmp" && mv "$zshrc.tmp" "$zshrc"
+        sed '/# >>> nds precmd auto-switch start >>>/,/# <<< nds precmd auto-switch end <<</d' "$zshrc" > "$zshrc.tmp" && mv "$zshrc.tmp" "$zshrc"
         echo "$func_code" >> "$zshrc"
         echo "$zsh_hook_code" >> "$zshrc"
         echo "Enabled nds auto-switching in $zshrc"
@@ -342,13 +342,13 @@ disable_auto_switch() {
     local bashrc="$HOME/.bashrc"
     local zshrc="$HOME/.zshrc"
     if [[ -f "$bashrc" ]]; then
-        sed -i '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$bashrc"
-        sed -i '/# >>> nds PROMPT_COMMAND auto-switch start >>>/,/# <<< nds PROMPT_COMMAND auto-switch end <<</d' "$bashrc"
+        sed '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$bashrc" > "$bashrc.tmp" && mv "$bashrc.tmp" "$bashrc"
+        sed '/# >>> nds PROMPT_COMMAND auto-switch start >>>/,/# <<< nds PROMPT_COMMAND auto-switch end <<</d' "$bashrc" > "$bashrc.tmp" && mv "$bashrc.tmp" "$bashrc"
         echo "Disabled nds auto-switching in $bashrc"
     fi
     if [[ -f "$zshrc" ]]; then
-        sed -i '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$zshrc"
-        sed -i '/# >>> nds precmd auto-switch start >>>/,/# <<< nds precmd auto-switch end <<</d' "$zshrc"
+        sed '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$zshrc" > "$zshrc.tmp" && mv "$zshrc.tmp" "$zshrc"
+        sed '/# >>> nds precmd auto-switch start >>>/,/# <<< nds precmd auto-switch end <<</d' "$zshrc" > "$zshrc.tmp" && mv "$zshrc.tmp" "$zshrc"
         echo "Disabled nds auto-switching in $zshrc"
     fi
     echo "Auto-switching disabled. Please restart your shell or run: source ~/.bashrc or source ~/.zshrc"
