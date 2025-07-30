@@ -111,7 +111,6 @@ use_version() {
         install_version "$version"
     fi
     local bin_path="$VERSIONS_DIR/$version/bin"
-    # Remove any other nds node bins from PATH
     export PATH="$bin_path:$(echo $PATH | tr ':' '\n' | grep -v "$VERSIONS_DIR/.*/bin" | paste -sd ':')"
     echo "Now using Node.js $version in this shell."
 }
@@ -121,6 +120,7 @@ set_default_version() {
     [[ "$version" == "latest" ]] && version=$(ls -v "$VERSIONS_DIR" | head -n 1)
     [[ ! -d "$VERSIONS_DIR/$version" ]] && { echo "Node.js $version is not installed. Installing..."; install_version "$version"; }
     ln -sfn "$VERSIONS_DIR/$version" "$DEFAULT_NODE_SYMLINK"
+    use_version "$version"
     echo "Default Node.js version set to $version."
     echo
     echo "Add this to your .bashrc or .zshrc to use it automatically in new shells:"
@@ -143,7 +143,108 @@ interactive_version_picker() {
     [[ -n "$version" ]] && install_version "$version"
 }
 
-# -------- Shell Integration --------
+# -------- Auto-Switching Logic --------
+
+auto_switch_to_project_version() {
+    # Check config first
+    if [[ -f "$CONFIG_FILE" ]]; then
+        source "$CONFIG_FILE"
+        [[ "$AUTO_SWITCH" != "true" ]] && return
+    fi
+    # Find .nds or .nvmrc in current directory
+    local version_file=""
+    if [[ -f ".nds" ]]; then
+        version_file=".nds"
+    elif [[ -f ".nvmrc" ]]; then
+        version_file=".nvmrc"
+    fi
+    if [[ -n "$version_file" ]]; then
+        local version
+        version=$(cat "$version_file" | tr -d '[:space:]')
+        if [[ -n "$version" ]]; then
+            local current_version
+            current_version=$(node --version 2>/dev/null | sed 's/^v//')
+            if [[ "$current_version" != "$version" ]]; then
+                if [[ ! -d "$VERSIONS_DIR/$version" ]]; then
+                    echo "[nds] Installing Node.js $version from $version_file"
+                    install_version "$version"
+                fi
+                # Switch version for current shell
+                local bin_path="$VERSIONS_DIR/$version/bin"
+                export PATH="$bin_path:$(echo $PATH | tr ':' '\n' | grep -v "$VERSIONS_DIR/.*/bin" | paste -sd ':')"
+                echo "[nds] Now using Node.js $version (from $version_file)"
+            fi
+        fi
+    fi
+}
+
+enable_auto_switch() {
+    echo "AUTO_SWITCH=true" > "$CONFIG_FILE"
+
+    local bashrc="$HOME/.bashrc"
+    local zshrc="$HOME/.zshrc"
+    local func_code='
+# >>> nds auto-switch start >>>
+auto_switch_to_project_version() {
+    if command -v nds >/dev/null 2>&1; then
+        nds auto-switch-internal
+    fi
+}
+# <<< nds auto-switch end <<<
+'
+    local bash_hook_code='
+# >>> nds PROMPT_COMMAND auto-switch start >>>
+if [[ "$PROMPT_COMMAND" != *auto_switch_to_project_version* ]]; then
+    PROMPT_COMMAND="auto_switch_to_project_version; $PROMPT_COMMAND"
+fi
+# <<< nds PROMPT_COMMAND auto-switch end <<<
+'
+    local zsh_hook_code='
+# >>> nds precmd auto-switch start >>>
+autoload -U add-zsh-hook
+add-zsh-hook precmd auto_switch_to_project_version
+# <<< nds precmd auto-switch end <<<
+'
+
+    # Write function and hook to bashrc
+    if [[ -f "$bashrc" ]]; then
+        sed -i '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$bashrc"
+        sed -i '/# >>> nds PROMPT_COMMAND auto-switch start >>>/,/# <<< nds PROMPT_COMMAND auto-switch end <<</d' "$bashrc"
+        echo "$func_code" >> "$bashrc"
+        echo "$bash_hook_code" >> "$bashrc"
+        echo "Enabled nds auto-switching in $bashrc"
+    fi
+
+    # Write function and hook to zshrc
+    if [[ -f "$zshrc" ]]; then
+        sed -i '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$zshrc"
+        sed -i '/# >>> nds precmd auto-switch start >>>/,/# <<< nds precmd auto-switch end <<</d' "$zshrc"
+        echo "$func_code" >> "$zshrc"
+        echo "$zsh_hook_code" >> "$zshrc"
+        echo "Enabled nds auto-switching in $zshrc"
+    fi
+
+    echo "Auto-switching enabled. Please restart your shell or run: source ~/.bashrc or source ~/.zshrc"
+}
+
+disable_auto_switch() {
+    echo "AUTO_SWITCH=false" > "$CONFIG_FILE"
+    local bashrc="$HOME/.bashrc"
+    local zshrc="$HOME/.zshrc"
+    if [[ -f "$bashrc" ]]; then
+        sed -i '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$bashrc"
+        sed -i '/# >>> nds PROMPT_COMMAND auto-switch start >>>/,/# <<< nds PROMPT_COMMAND auto-switch end <<</d' "$bashrc"
+        echo "Disabled nds auto-switching in $bashrc"
+    fi
+    if [[ -f "$zshrc" ]]; then
+        sed -i '/# >>> nds auto-switch start >>>/,/# <<< nds auto-switch end <<</d' "$zshrc"
+        sed -i '/# >>> nds precmd auto-switch start >>>/,/# <<< nds precmd auto-switch end <<</d' "$zshrc"
+        echo "Disabled nds auto-switching in $zshrc"
+    fi
+    echo "Auto-switching disabled. Please restart your shell or run: source ~/.bashrc or source ~/.zshrc"
+}
+
+# -------- Shell Integration (init command) --------
 
 nds_init() {
     local bashrc="$HOME/.bashrc"
@@ -169,7 +270,6 @@ nds() {
                 echo "Added nds PATH initialization to $shellrc"
                 updated=1
             fi
-            # Only add function if not already present
             if ! grep -q "nds() {" "$shellrc" 2>/dev/null; then
                 echo "$func_line" >> "$shellrc"
                 echo "Added nds shell function to $shellrc"
@@ -201,9 +301,10 @@ USAGE:
   nds install pick           Interactively pick a Node.js version to install (from latest 5 majors)
   nds latest                 Install the latest Node.js version
   nds use <version>          Use a Node.js version in the current shell
-  nds set <version>          Set the default Node.js version for new shells
+  nds set <version>          Set the default Node.js version for new shells and your current shell
   nds remove <version>       Remove a specific Node.js version
-  nds auto [off]             Enable or disable automatic switching with .nvm/.nds files
+  nds auto [on]              Enable automatic switching to Node.js version based on .nvmrc/.nds files
+  nds auto off               Disable automatic switching and remove hooks from your shell config
   nds init                   Add PATH and shell integration to your shell config
   nds help, -h, --help       Show this help message
 
@@ -218,7 +319,8 @@ EXAMPLES:
 NOTES:
 - 'nds available' and 'nds install pick' list only the latest 5 major Node.js versions.
 - You can still install and use *any* Node.js version explicitly, e.g. 'nds install 14.21.3'.
-- After running 'nds init', restart your shell or source your shell config.
+- 'nds auto on' enables automatic switching based on .nvmrc or .nds file in your project directory.
+- After running 'nds init' or 'nds auto', restart your shell or source your shell config.
 - To use your default node version in every new shell, ensure your .bashrc/.zshrc includes:
     if [ -d "$HOME/.config/nds/default/bin" ]; then export PATH="$HOME/.config/nds/default/bin:$PATH"; fi
 EOF
@@ -263,10 +365,13 @@ case "$1" in
         ;;
     auto)
         if [[ "$2" == "off" ]]; then
-            echo "Auto-switching OFF (not implemented in this script yet)."
+            disable_auto_switch
         else
-            echo "Auto-switching ON (not implemented in this script yet)."
+            enable_auto_switch
         fi
+        ;;
+    auto-switch-internal)
+        auto_switch_to_project_version
         ;;
     init)
         nds_init
