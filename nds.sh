@@ -31,17 +31,11 @@ fetch_available_versions() {
 }
 
 fetch_available_versions_limited() {
-    local all_versions
+    local all_versions top_majors
     all_versions=$(fetch_available_versions)
-    local top_majors
-    top_majors=$(echo "$all_versions" | awk -F. '{print $1}' | uniq | head -n 5 | xargs)
-    echo "$all_versions" | awk -F. -v majors="$top_majors" '
-        BEGIN {
-            split(majors, mlist, " ")
-            for (i in mlist) keep[mlist[i]]
-        }
-        keep[$1]
-    '
+    top_majors=$(echo "$all_versions" | awk -F. '{print $1}' | uniq | head -n 5)
+    local awk_regex="^($(echo "$top_majors" | paste -sd '|' -))\\."
+    echo "$all_versions" | grep -E "$awk_regex"
 }
 
 get_latest_version() {
