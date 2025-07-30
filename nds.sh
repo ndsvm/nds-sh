@@ -30,6 +30,20 @@ fetch_available_versions() {
     curl -s "$NODE_SOURCE_URL/index.tab" | awk 'NR > 1 {print $1}' | sed 's/^v//' | sort -Vr
 }
 
+fetch_available_versions_limited() {
+    local all_versions
+    all_versions=$(fetch_available_versions)
+    local top_majors
+    top_majors=$(echo "$all_versions" | awk -F. '{print $1}' | uniq | head -n 5 | xargs)
+    echo "$all_versions" | awk -F. -v majors="$top_majors" '
+        BEGIN {
+            split(majors, mlist, " ")
+            for (i in mlist) keep[mlist[i]]
+        }
+        keep[$1]
+    '
+}
+
 get_latest_version() {
     fetch_available_versions | head -n 1
 }
@@ -84,7 +98,7 @@ install_version() {
 
 remove_version() {
     local version=$1
-    [[ "$version" == "latest" ]] && version=$(ls -v "$VERSIONS_DIR" | tail -n 1)
+    [[ "$version" == "latest" ]] && version=$(ls -v "$VERSIONS_DIR" | head -n 1)
     [[ ! -d "$VERSIONS_DIR/$version" ]] && { echo "Node.js $version is not installed."; return; }
     echo "Are you sure you want to remove Node.js $version? [y/N]"
     read -r confirm
@@ -96,7 +110,7 @@ remove_version() {
 use_version() {
     local version=$1
     if [[ "$version" == "latest" ]]; then
-        version=$(ls -v "$VERSIONS_DIR" | tail -n 1)
+        version=$(ls -v "$VERSIONS_DIR" | head -n 1)
     fi
     if [[ ! -d "$VERSIONS_DIR/$version" ]]; then
         echo "Node.js $version is not installed. Installing..."
@@ -110,7 +124,7 @@ use_version() {
 
 set_default_version() {
     local version=$1
-    [[ "$version" == "latest" ]] && version=$(ls -v "$VERSIONS_DIR" | tail -n 1)
+    [[ "$version" == "latest" ]] && version=$(ls -v "$VERSIONS_DIR" | head -n 1)
     [[ ! -d "$VERSIONS_DIR/$version" ]] && { echo "Node.js $version is not installed. Installing..."; install_version "$version"; }
     ln -sfn "$VERSIONS_DIR/$version" "$DEFAULT_NODE_SYMLINK"
     echo "Default Node.js version set to $version."
@@ -121,7 +135,7 @@ set_default_version() {
 
 interactive_version_picker() {
     local available_versions
-    available_versions=$(fetch_available_versions)
+    available_versions=$(fetch_available_versions_limited)
     local version
     if command -v fzf &> /dev/null; then
         version=$(echo "$available_versions" | fzf --prompt="Select Node.js version: ")
@@ -188,9 +202,9 @@ nds - Simple Node.js Version Manager
 
 USAGE:
   nds list                   List all installed Node.js versions
-  nds available              List all available Node.js versions (latest first)
+  nds available              List available Node.js versions (latest 5 majors)
   nds install <version>      Install a specific version (e.g., 22.2.0, 18, latest)
-  nds install pick           Interactively pick a Node.js version to install
+  nds install pick           Interactively pick a Node.js version to install (from latest 5 majors)
   nds latest                 Install the latest Node.js version
   nds use <version>          Use a Node.js version in the current shell
   nds set <version>          Set the default Node.js version for new shells
@@ -208,8 +222,9 @@ EXAMPLES:
   nds install pick
 
 NOTES:
+- 'nds available' and 'nds install pick' list only the latest 5 major Node.js versions.
+- You can still install and use *any* Node.js version explicitly, e.g. 'nds install 14.21.3'.
 - After running 'nds init', restart your shell or source your shell config.
-- When using 'nds use <version>', your shell's PATH will update for that session.
 - To use your default node version in every new shell, ensure your .bashrc/.zshrc includes:
     if [ -d "$HOME/.config/nds/default/bin" ]; then export PATH="$HOME/.config/nds/default/bin:$PATH"; fi
 EOF
@@ -231,7 +246,7 @@ case "$1" in
         list_installed_versions
         ;;
     available)
-        fetch_available_versions
+        fetch_available_versions_limited
         ;;
     latest)
         install_version "latest"
