@@ -108,7 +108,7 @@ interactive_remove_installed_versions() {
     read -r confirm
     if [[ "$confirm" == "y" ]]; then
         for version in $picked; do
-            remove_version "$version"
+            remove_version "$version" no_confirm
         done
     else
         echo "Aborted."
@@ -196,11 +196,14 @@ install_version() {
 
 remove_version() {
     local version=$1
+    local skip_confirm=$2
     [[ "$version" == "latest" ]] && version=$(ls -v "$VERSIONS_DIR" | head -n 1)
     [[ ! -d "$VERSIONS_DIR/$version" ]] && { echo "Node.js $version is not installed."; return; }
-    echo "Are you sure you want to remove Node.js $version? [y/N]"
-    read -r confirm
-    [[ "$confirm" != "y" ]] && { echo "Aborted."; return; }
+    if [[ "$skip_confirm" != "no_confirm" ]]; then
+        echo "Are you sure you want to remove Node.js $version? [y/N]"
+        read -r confirm
+        [[ "$confirm" != "y" ]] && { echo "Aborted."; return; }
+    fi
     rm -rf "$VERSIONS_DIR/$version"
     echo "Node.js $version removed."
 }
