@@ -49,7 +49,67 @@ get_latest_major_version() {
 
 list_installed_versions() {
     echo "Installed Node.js versions:"
-    ls "$VERSIONS_DIR" 2>/dev/null || echo "  (none)"
+    if [[ -d "$VERSIONS_DIR" ]]; then
+        local versions default_version current_version count
+        versions=$(find "$VERSIONS_DIR" -mindepth 1 -maxdepth 1 -type d | sed 's|.*/||' | sort -V)
+        count=$(echo "$versions" | wc -l)
+        [[ $count -eq 0 ]] && { echo "  (none)"; return; }
+
+        # Find default version (symlink target)
+        if [[ -L "$DEFAULT_NODE_SYMLINK" ]]; then
+            default_version=$(readlink "$DEFAULT_NODE_SYMLINK" | sed 's|.*/||')
+        fi
+
+        # Find current shell version
+        current_version=$(node --version 2>/dev/null | sed 's/^v//')
+
+        # Print with annotations
+        while IFS= read -r version; do
+            marker=""
+            [[ "$version" == "$default_version" ]] && marker="${marker}[default]"
+            [[ "$version" == "$current_version" ]] && marker="${marker}[current]"
+            printf "  %s %s\n" "$version" "$marker"
+        done <<< "$versions"
+    else
+        echo "  (none)"
+    fi
+}
+
+interactive_remove_installed_versions() {
+    local versions
+    versions=$(find "$VERSIONS_DIR" -mindepth 1 -maxdepth 1 -type d | sed 's|.*/||' | sort -V)
+    if [[ -z "$versions" ]]; then
+        echo "No Node.js versions are installed."
+        return 0
+    fi
+    if ! command -v fzf &>/dev/null; then
+        echo "fzf not found. Please install fzf for interactive removal."
+        echo "Installed versions:"
+        echo "$versions"
+        echo "You can remove with: nds remove <version>"
+        return 1
+    fi
+
+    echo "$versions" | fzf --multi --prompt="Select version(s) to remove (Tab to mark, Enter to confirm, ESC to cancel): " > /tmp/nds-pick-$$
+    local picked
+    picked=$(cat /tmp/nds-pick-$$)
+    rm /tmp/nds-pick-$$
+    if [[ -z "$picked" ]]; then
+        echo "No versions selected. Nothing removed."
+        return 0
+    fi
+
+    echo "You selected:"
+    echo "$picked"
+    echo "Are you sure you want to remove these version(s)? [y/N]"
+    read -r confirm
+    if [[ "$confirm" == "y" ]]; then
+        while IFS= read -r version; do
+            remove_version "$version"
+        done <<< "$picked"
+    else
+        echo "Aborted."
+    fi
 }
 
 # -------- Installation, Removal, Use, Set --------
@@ -295,7 +355,8 @@ cat <<'EOF'
 nds - Simple Node.js Version Manager
 
 USAGE:
-  nds list                   List all installed Node.js versions
+  nds list                   List all installed Node.js versions, marking [default] and [current]
+  nds list pick              Interactively pick and remove installed Node.js versions
   nds available              List available Node.js versions (latest 5 majors)
   nds install <version>      Install a specific version (e.g., 22.2.0, 18, latest)
   nds install pick           Interactively pick a Node.js version to install (from latest 5 majors)
@@ -314,9 +375,11 @@ EXAMPLES:
   nds use 20.13.1
   nds set latest
   nds remove 18.17.1
+  nds list pick
   nds install pick
 
 NOTES:
+- 'nds list' marks [default] and [current] versions for easy reference.
 - 'nds available' and 'nds install pick' list only the latest 5 major Node.js versions.
 - You can still install and use *any* Node.js version explicitly, e.g. 'nds install 14.21.3'.
 - 'nds auto on' enables automatic switching based on .nvmrc or .nds file in your project directory.
@@ -339,7 +402,11 @@ fi
 
 case "$1" in
     list)
-        list_installed_versions
+        if [[ "$2" == "pick" ]]; then
+            interactive_remove_installed_versions
+        else
+            list_installed_versions
+        fi
         ;;
     available)
         fetch_available_versions_limited
