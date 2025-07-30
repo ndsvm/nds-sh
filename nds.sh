@@ -24,6 +24,22 @@ case "$ARCH" in
     *) echo "Unsupported architecture: $ARCH"; exit 1;;
 esac
 
+# ------------------ Helpers -------------------
+
+clean_path_of_node_bins() {
+    local path_in="$1"
+    local out_path=""
+    local IFS=':'
+    for p in $path_in; do
+        skip=""
+        for d in "$VERSIONS_DIR"/*/bin; do
+            [[ "$p" == "$d" ]] && skip=1 && break
+        done
+        [[ -z "$skip" ]] && out_path="${out_path:+$out_path:}$p"
+    done
+    echo "$out_path"
+}
+
 # -------- Version Fetching and Listing --------
 
 fetch_available_versions() {
@@ -213,7 +229,6 @@ use_version() {
     if [[ "$version" == "latest" ]]; then
         version=$(ls -v "$VERSIONS_DIR" | head -n 1)
     elif [[ "$version" =~ ^[0-9]+$ ]]; then
-        # Find latest installed version for this major
         version=$(find "$VERSIONS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep "^$1\\." | sort -Vr | head -n 1)
         if [[ -z "$version" ]]; then
             echo "No installed Node.js version found for major $1."
@@ -225,14 +240,7 @@ use_version() {
         install_version "$version"
     fi
     local bin_path="$VERSIONS_DIR/$version/bin"
-
-    # Clean path of other node bins
-    cleaned_path="$PATH"
-    for d in "$VERSIONS_DIR"/*/bin; do
-        cleaned_path=$(echo "$cleaned_path" | tr ':' '\n' | grep -v "^$d\$" | paste -sd ':' -)
-    done
-    export PATH="$bin_path:$cleaned_path"
-
+    export PATH="$bin_path:$(clean_path_of_node_bins "$PATH")"
     echo "Now using Node.js $version in this shell."
 }
 
@@ -241,7 +249,6 @@ set_default_version() {
     if [[ "$version" == "latest" ]]; then
         version=$(ls -v "$VERSIONS_DIR" | head -n 1)
     elif [[ "$version" =~ ^[0-9]+$ ]]; then
-        # Find latest installed version for this major
         version=$(find "$VERSIONS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep "^$1\\." | sort -Vr | head -n 1)
         if [[ -z "$version" ]]; then
             echo "No installed Node.js version found for major $1."
@@ -253,15 +260,8 @@ set_default_version() {
         install_version "$version"
     fi
     ln -sfn "$VERSIONS_DIR/$version" "$DEFAULT_NODE_SYMLINK"
-
-    # Switch to it in the current shell as well
     local bin_path="$VERSIONS_DIR/$version/bin"
-    cleaned_path="$PATH"
-    for d in "$VERSIONS_DIR"/*/bin; do
-        cleaned_path=$(echo "$cleaned_path" | tr ':' '\n' | grep -v "^$d\$" | paste -sd ':' -)
-    done
-    export PATH="$bin_path:$cleaned_path"
-
+    export PATH="$bin_path:$(clean_path_of_node_bins "$PATH")"
     echo "Default Node.js version set to $version."
     echo
     echo "Add this to your .bashrc or .zshrc to use it automatically in new shells:"
