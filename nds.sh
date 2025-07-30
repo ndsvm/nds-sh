@@ -24,29 +24,6 @@ case "$ARCH" in
     *) echo "Unsupported architecture: $ARCH"; exit 1;;
 esac
 
-# ------------------ Helpers -------------------
-
-clean_path_of_node_bins() {
-    local path_in="$1"
-    local out_path=""
-    local IFS=':'
-    local node_bins=()
-    # Only build node_bins if any exist
-    if compgen -G "$VERSIONS_DIR"/*/bin > /dev/null; then
-        for d in "$VERSIONS_DIR"/*/bin; do
-            node_bins+=("$d")
-        done
-    fi
-    for p in $path_in; do
-        local found=0
-        for d in "${node_bins[@]}"; do
-            [[ "$p" == "$d" ]] && found=1 && break
-        done
-        [[ $found -eq 0 ]] && out_path="${out_path:+$out_path:}$p"
-    done
-    echo "$out_path"
-}
-
 # -------- Version Fetching and Listing --------
 
 fetch_available_versions() {
@@ -232,43 +209,39 @@ remove_version() {
 }
 
 use_version() {
-    local version=$1
-    if [[ "$version" == "latest" ]]; then
-        version=$(ls -v "$VERSIONS_DIR" | head -n 1)
-    elif [[ "$version" =~ ^[0-9]+$ ]]; then
-        version=$(find "$VERSIONS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep "^$1\\." | sort -Vr | head -n 1)
-        if [[ -z "$version" ]]; then
-            echo "No installed Node.js version found for major $1."
-            return 1
-        fi
+    local input="$1"
+    if [[ -z "$input" || "$input" == "latest" ]]; then
+        version=$(ls -v "$VERSIONS_DIR" | tail -n 1)
+    else
+        version=$(ls -v "$VERSIONS_DIR" | grep "^$input" | tail -n 1)
     fi
-    if [[ ! -d "$VERSIONS_DIR/$version" ]]; then
-        echo "Node.js $version is not installed. Installing..."
-        install_version "$version"
+    if [[ -z "$version" ]]; then
+        echo "No installed Node.js version matching '$input'."
+        return 1
     fi
     local bin_path="$VERSIONS_DIR/$version/bin"
-    export PATH="$bin_path:$(clean_path_of_node_bins "$PATH")"
+    if [[ ! -d "$bin_path" ]]; then
+        echo "Node.js version $version is missing a bin directory!"
+        return 1
+    fi
+    export PATH="$bin_path:$PATH"
     echo "Now using Node.js $version in this shell."
 }
 
 set_default_version() {
-    local version=$1
-    if [[ "$version" == "latest" ]]; then
-        version=$(ls -v "$VERSIONS_DIR" | head -n 1)
-    elif [[ "$version" =~ ^[0-9]+$ ]]; then
-        version=$(find "$VERSIONS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep "^$1\\." | sort -Vr | head -n 1)
-        if [[ -z "$version" ]]; then
-            echo "No installed Node.js version found for major $1."
-            return 1
-        fi
+    local input="$1"
+    if [[ -z "$input" || "$input" == "latest" ]]; then
+        version=$(ls -v "$VERSIONS_DIR" | tail -n 1)
+    else
+        version=$(ls -v "$VERSIONS_DIR" | grep "^$input" | tail -n 1)
     fi
-    if [[ ! -d "$VERSIONS_DIR/$version" ]]; then
-        echo "Node.js $version is not installed. Installing..."
-        install_version "$version"
+    if [[ -z "$version" ]]; then
+        echo "No installed Node.js version matching '$input'."
+        return 1
     fi
     ln -sfn "$VERSIONS_DIR/$version" "$DEFAULT_NODE_SYMLINK"
     local bin_path="$VERSIONS_DIR/$version/bin"
-    export PATH="$bin_path:$(clean_path_of_node_bins "$PATH")"
+    export PATH="$bin_path:$PATH"
     echo "Default Node.js version set to $version."
     echo
     echo "Add this to your .bashrc or .zshrc to use it automatically in new shells:"
