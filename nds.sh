@@ -112,6 +112,41 @@ interactive_remove_installed_versions() {
     fi
 }
 
+# -------- Extraction Progress Bar --------
+
+extract_with_fake_progress_bar() {
+    local tarfile="$1"
+    local dest="$2"
+    local width=30
+    local duration=3  # estimated seconds for extraction
+    local interval=0.1
+    local steps=$((duration * 10))
+    local i=0
+
+    (
+        while (( i < steps )); do
+            local fill=$((width * i / steps))
+            local empty=$((width - fill))
+            printf "\rExtracting... ["
+            printf "%0.s=" $(seq 1 $fill)
+            printf "%0.s " $(seq 1 $empty)
+            printf "]"
+            sleep "$interval"
+            ((i++))
+        done
+    ) &
+    local bar_pid=$!
+
+    # Actual extraction in parallel
+    tar -xzf "$tarfile" --strip-components=1 -C "$dest" >/dev/null 2>&1
+    local result=$?
+
+    kill "$bar_pid" >/dev/null 2>&1
+    wait "$bar_pid" 2>/dev/null
+    printf "\rExtracting... [==============================] done\n"
+    return $result
+}
+
 # -------- Installation, Removal, Use, Set --------
 
 install_version() {
@@ -134,18 +169,24 @@ install_version() {
     local tarball_url="$NODE_SOURCE_URL/v$version/node-v$version-$NODE_OS-$NODE_ARCH.tar.gz"
     local temp_file
     temp_file=$(mktemp)
-    if ! curl -fsSL "$tarball_url" -o "$temp_file"; then
+
+    # Download with curl progress bar
+    echo "Downloading $tarball_url"
+    if ! curl --progress-bar -fSL "$tarball_url" -o "$temp_file"; then
         echo "Failed to download $tarball_url"
         rm -f "$temp_file"
         rm -rf "$version_dir"
         return 1
     fi
-    if ! tar -xzf "$temp_file" --strip-components=1 -C "$version_dir"; then
+
+    # Extraction with fake progress bar
+    if ! extract_with_fake_progress_bar "$temp_file" "$version_dir"; then
         echo "Failed to extract Node.js $version."
         rm -f "$temp_file"
         rm -rf "$version_dir"
         return 1
     fi
+
     rm "$temp_file"
     echo "Node.js $version installed successfully."
 }
