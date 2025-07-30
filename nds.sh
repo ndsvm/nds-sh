@@ -397,8 +397,8 @@ nds() {
     add_to_shell_config() {
         local shellrc="$1"
         if [[ -f "$shellrc" ]]; then
-            # Remove old nds() definitions
-            sed -i '' '/^nds()/,/^}/d' "$shellrc"
+            # Remove old nds() definitions in a portable way
+            sed '/^nds()/,/^}/d' "$shellrc" > "$shellrc.tmp" && mv "$shellrc.tmp" "$shellrc"
             # Add PATH line if missing
             if ! grep -Fxq "$nds_path_line" "$shellrc"; then
                 echo "$nds_path_line" >> "$shellrc"
