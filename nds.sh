@@ -256,40 +256,15 @@ interactive_version_picker() {
 # -------- Auto-Switching Logic --------
 
 auto_switch_to_project_version() {
-    if [[ -f "$CONFIG_FILE" ]]; then
-        source "$CONFIG_FILE"
-        [[ "$AUTO_SWITCH" != "true" ]] && return
-    fi
-    local version_file=""
-    if [[ -f ".nds" ]]; then
-        version_file=".nds"
-    elif [[ -f ".nvmrc" ]]; then
-        version_file=".nvmrc"
-    fi
-    if [[ -n "$version_file" ]]; then
-        local version
-        version=$(cat "$version_file" | tr -d '[:space:]')
-        if [[ -n "$version" ]]; then
-            local current_version
-            current_version=$(node --version 2>/dev/null | sed 's/^v//')
-            if [[ -z "$current_version" || ! "$current_version" == "$version"* ]]; then
-                local installed_version
-                installed_version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$version" | tail -n 1)
-                if [[ -z "$installed_version" ]]; then
-                    echo "[nds] Installing Node.js $version from $version_file"
-                    install_version "$version"
-                    installed_version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$version" | tail -n 1)
-                fi
-                if [[ -n "$installed_version" && -d "$VERSIONS_DIR/$installed_version/bin" ]]; then
-                    local bin_path="$VERSIONS_DIR/$installed_version/bin"
-                    export PATH="$bin_path:$(echo $PATH | tr ':' '\n' | grep -v "$VERSIONS_DIR/.*/bin" | paste -sd ':' -)"
-                    echo "[nds] Now using Node.js $installed_version (from $version_file)"
-                else
-                    echo "[nds] Could not find an installed Node.js version matching $version (from $version_file)"
-                fi
-            fi
-        fi
-    fi
+  local version=""
+  if [[ -f .nds ]]; then
+    version=$(cat .nds | tr -d '[:space:]')
+  elif [[ -f .nvmrc ]]; then
+    version=$(cat .nvmrc | tr -d '[:space:]')
+  fi
+  if [[ -n "$version" ]]; then
+    nds use "$version" >/dev/null
+  fi
 }
 
 enable_auto_switch() {
@@ -300,9 +275,15 @@ enable_auto_switch() {
     local func_code='
 # >>> nds auto-switch start >>>
 auto_switch_to_project_version() {
-    if command -v nds >/dev/null 2>&1; then
-        nds auto-switch-internal
-    fi
+  local version=""
+  if [[ -f .nds ]]; then
+    version=$(cat .nds | tr -d "[:space:]")
+  elif [[ -f .nvmrc ]]; then
+    version=$(cat .nvmrc | tr -d "[:space:]")
+  fi
+  if [[ -n "$version" ]]; then
+    nds use "$version" >/dev/null
+  fi
 }
 # <<< nds auto-switch end <<<
 '
@@ -363,15 +344,7 @@ disable_auto_switch() {
 nds_init() {
     local bashrc="$HOME/.bashrc"
     local zshrc="$HOME/.zshrc"
-    local nds_path_block='
-# NDS Node.js default version (respects AUTO_SWITCH)
-if [ -f "$HOME/.config/nds/nds.conf" ]; then
-  . "$HOME/.config/nds/nds.conf"
-fi
-if [ "$AUTO_SWITCH" != "true" ] && [ -d "$HOME/.config/nds/default/bin" ]; then
-  export PATH="$HOME/.config/nds/default/bin:$PATH"
-fi
-'
+    local nds_path_line='if [ -d "$HOME/.config/nds/default/bin" ]; then export PATH="$HOME/.config/nds/default/bin:$PATH"; fi'
     local nds_func='
 nds() {
   if [ "$1" = "use" ] && [ -n "$2" ]; then
@@ -397,19 +370,12 @@ nds() {
     echo "Default Node.js version set to $version."
     echo
     echo "Add this to your .bashrc or .zshrc to use it automatically in new shells:"
-    echo '\''# NDS Node.js default version (respects AUTO_SWITCH)
-if [ -f "$HOME/.config/nds/nds.conf" ]; then
-  . "$HOME/.config/nds/nds.conf"
-fi
-if [ "$AUTO_SWITCH" != "true" ] && [ -d "$HOME/.config/nds/default/bin" ]; then
-  export PATH="$HOME/.config/nds/default/bin:$PATH"
-fi'\''
+    echo '\''if [ -d "$HOME/.config/nds/default/bin" ]; then export PATH="$HOME/.config/nds/default/bin:$PATH"; fi'\''
   else
     command nds "$@"
   fi
 }
 '
-
     local updated=0
 
     add_to_shell_config() {
@@ -419,12 +385,10 @@ fi'\''
             sed '/^nds()/,/^}/d' "$shellrc" > "$shellrc.tmp" && mv "$shellrc.tmp" "$shellrc"
             # Remove old unconditional PATH lines
             sed '/^if \[ -d "\$HOME\/.config\/nds\/default\/bin" \]; then export PATH="\$HOME\/.config\/nds\/default\/bin:\$PATH"; fi$/d' "$shellrc" > "$shellrc.tmp" && mv "$shellrc.tmp" "$shellrc"
-            # Remove previous NDS PATH block
-            sed '/# NDS Node.js default version (respects AUTO_SWITCH)/,/^fi$/d' "$shellrc" > "$shellrc.tmp" && mv "$shellrc.tmp" "$shellrc"
-            # Add conditional PATH block if missing
-            if ! grep -q 'NDS Node.js default version (respects AUTO_SWITCH)' "$shellrc" 2>/dev/null; then
-                echo "$nds_path_block" >> "$shellrc"
-                echo "Added nds conditional PATH initialization to $shellrc"
+            # Add PATH line if missing
+            if ! grep -Fxq "$nds_path_line" "$shellrc"; then
+                echo "$nds_path_line" >> "$shellrc"
+                echo "Added nds PATH initialization to $shellrc"
                 updated=1
             fi
             # Add function if missing
