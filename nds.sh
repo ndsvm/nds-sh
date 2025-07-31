@@ -349,24 +349,41 @@ nds_init() {
 nds() {
   if [ "$1" = "use" ] && [ -n "$2" ]; then
     local VERSIONS_DIR="$HOME/.config/nds/versions"
-    local version
+    local DEFAULT_BIN="$HOME/.config/nds/default/bin"
+    local version bin_path clean_path
+
     version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$2" | tail -n 1)
     if [ -z "$version" ]; then
       echo "No installed Node.js version matching '\''$2'\''."
       return 1
     fi
-    export PATH="$VERSIONS_DIR/$version/bin:$PATH"
+    bin_path="$VERSIONS_DIR/$version/bin"
+
+    # Remove all nds bins from PATH
+    clean_path=$(echo "$PATH" | tr ":" "\n" | grep -v "$VERSIONS_DIR/.*/bin" | grep -v "$DEFAULT_BIN" | paste -sd ":" -)
+
+    # Prepend current node, then default node (if not the same as current), then the rest
+    if [ "$bin_path" != "$DEFAULT_BIN" ]; then
+      export PATH="$bin_path:$DEFAULT_BIN:$clean_path"
+    else
+      export PATH="$bin_path:$clean_path"
+    fi
+
     echo "Now using Node.js $version in this shell."
   elif [ "$1" = "set" ] && [ -n "$2" ]; then
     local VERSIONS_DIR="$HOME/.config/nds/versions"
-    local version
+    local version bin_path clean_path
+
     version=$(ls -1v "$VERSIONS_DIR" 2>/dev/null | grep "^$2" | tail -n 1)
     if [ -z "$version" ]; then
       echo "No installed Node.js version matching '\''$2'\''."
       return 1
     fi
     ln -sfn "$VERSIONS_DIR/$version" "$HOME/.config/nds/default"
-    export PATH="$VERSIONS_DIR/$version/bin:$PATH"
+    bin_path="$VERSIONS_DIR/$version/bin"
+
+    clean_path=$(echo "$PATH" | tr ":" "\n" | grep -v "$VERSIONS_DIR/.*/bin" | grep -v "$HOME/.config/nds/default/bin" | paste -sd ":" -)
+    export PATH="$bin_path:$clean_path"
     echo "Default Node.js version set to $version."
     echo
     echo "Add this to your .bashrc or .zshrc to use it automatically in new shells:"
@@ -376,6 +393,7 @@ nds() {
   fi
 }
 '
+
     local updated=0
 
     add_to_shell_config() {
